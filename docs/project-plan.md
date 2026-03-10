@@ -38,7 +38,7 @@
 
 ```
 阶段1：定义需求        [x] 已完成
-阶段2：设计架构        [~] 进行中
+阶段2：设计架构        [x] 已完成
 阶段3：编码实现（TDD） [ ] 未开始
 阶段4：集成与端到端测试 [ ] 未开始
 阶段5：云端部署        [ ] 未开始
@@ -78,32 +78,34 @@
 ### 任务清单
 
 **系统架构**
-- [ ] 整体架构图（服务划分、数据流）
-- [ ] 部署架构图（容器、网络、存储）
-- [ ] 技术选型 ADR 文档
+- [x] 整体架构图（服务划分、数据流）
+- [x] 部署架构图（容器、网络、存储）
+- [x] 技术选型 ADR 文档
 
 **模块设计**
-- [ ] Go API 服务模块划分
-- [ ] Python 推理服务设计
-- [ ] 任务队列设计（Redis Stream 方案）
-- [ ] 数据库 Schema 设计
+- [x] Go API 服务模块划分
+- [x] Python 推理服务设计
+- [x] 任务队列设计（Redis Stream 方案）
+- [x] 数据库 Schema 设计
 
 **接口规范**
-- [ ] OpenAPI 3.0 接口文档（API First）
-- [ ] 内部服务间通信协议
-- [ ] 客户端 SDK 接口规范
+- [x] OpenAPI 3.0 接口文档（API First）
+- [x] 内部服务间通信协议
+- [x] 客户端 SDK 接口规范
 
 **数据设计**
-- [ ] MySQL 表结构设计
-- [ ] Redis 数据结构设计
-- [ ] 音频文件存储结构设计
+- [x] MySQL 表结构设计
+- [x] Redis 数据结构设计
+- [x] 音频文件存储结构设计
 
 ### 产出物
 
-- [ ] `docs/architecture/system-overview.md`
-- [ ] `docs/architecture/api-spec.yaml`（OpenAPI）
-- [ ] `docs/architecture/database-schema.md`
-- [ ] `docs/adr/` 目录（各技术决策记录）
+- [x] `docs/architecture/system-overview.md`
+- [x] `docs/architecture/api-spec.yaml`（OpenAPI）
+- [x] `docs/architecture/database-schema.md`
+- [x] `docs/architecture/internal-protocol.md`（内部通信协议）
+- [x] `docs/architecture/client-sdk-spec.md`（客户端 SDK 规范）
+- [x] `docs/adr/` 目录（各技术决策记录）
 
 ### 完成标准
 
@@ -144,6 +146,11 @@ AI 推理层（Python）
 实时通信
 └── [ ] WebSocket 任务进度推送
 ```
+
+### 进入实现前的注意事项
+
+- **OpenAPI 路径级 servers 兼容性**：`/ws` 和 `/internal/*` 使用了路径级 `servers` 覆盖全局 `/api/v1` 前缀。若引入代码生成工具（如 openapi-generator），需验证所用模板是否正确支持此特性；Python Worker 和客户端若手写，以描述中的硬编码 URL 为准。
+- **WebSocket 契约测试**：`api-spec.yaml` 中的 `/ws` 是文档化用途，OpenAPI 3.0 不原生支持 WebSocket，代码生成器会产出普通 HTTP GET。WebSocket 实现以 `client-sdk-spec.md §4.3` 和 `database-schema.md §2.5` 为准。如需机器可执行的契约，评估引入 AsyncAPI 规范。
 
 ### 每个模块的实现流程
 
@@ -267,18 +274,18 @@ AI 推理层（Python）
 
 | 编号 | 决策 | 状态 | 文档 |
 |--|--|--|--|
-| ADR-001 | API 层使用 Go 而非 Python | 已确认 | 待创建 |
-| ADR-002 | 数据库使用 MySQL 而非 PostgreSQL | 已确认 | 待创建 |
-| ADR-003 | 任务队列使用 Redis 而非 Kafka | 已确认 | 待创建 |
-| ADR-004 | GPU 推理使用 AutoDL 按需租用 | 已确认 | 待创建 |
+| ADR-001 | API 层使用 Go 而非 Python | 已确认 | `docs/adr/ADR-001-go-api-layer.md` |
+| ADR-002 | 数据库使用 MySQL 而非 PostgreSQL | 已确认 | `docs/adr/ADR-002-mysql.md` |
+| ADR-003 | 任务队列使用 Redis 而非 Kafka | 已确认 | `docs/adr/ADR-003-redis-stream-queue.md` |
+| ADR-004 | GPU 推理使用 AutoDL 按需租用 | 已确认 | `docs/adr/ADR-004-autodl-gpu.md` |
 
 ---
 
 ## 当前状态
 
-**当前阶段：** 阶段 2 - 设计架构（进行中）
-**最近更新：** 阶段1全部完成，进入架构设计
-**下一步行动：** 系统架构设计（高并发、伸缩性、扩展性优先）
+**当前阶段：** 阶段 3 - 编码实现（TDD）
+**最近更新：** 阶段 2 全部完成（架构文档、OpenAPI、内部协议、客户端 SDK 规范、4 份 ADR）
+**下一步行动：** 按阶段 3 实现顺序，从基础设施层开始——数据库 migration + Redis 连接 + 七牛云客户端
 
 ---
 

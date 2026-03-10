@@ -1,0 +1,1056 @@
+openapi: 3.0.3
+
+info:
+  title: Calliope API
+  description: |
+    Calliope AI 音乐生成系统后端 API。
+
+    ## 认证说明
+    - 大多数接口需要在 Header 携带 `Authorization: Bearer <access_token>`
+    - Access Token 有效期 **15 分钟**，过期后使用 Refresh Token 换取新 Token
+    - Refresh Token 有效期 **7 天**（remember_me=true 时 30 天），存储于 Redis，支持主动撤销
+
+    ## 错误响应格式
+    公开接口错误响应统一格式：
+    ```json
+    {
+      "code": "ERROR_CODE",
+      "message": "人类可读错误描述"
+    }
+    ```
+    内部接口（`/internal/*`）或部分冲突响应会在此基础上扩展额外字段（如 `reason`、`current_status`），详见各接口说明。
+
+    ## 通用错误码
+    | code | HTTP | 说明 |
+    |------|------|------|
+    | UNAUTHORIZED | 401 | 未登录或 Token 无效 |
+    | FORBIDDEN | 403 | 无权限访问该资源 |
+    | NOT_FOUND | 404 | 资源不存在 |
+    | VALIDATION_ERROR | 400 | 请求参数校验失败 |
+    | RATE_LIMIT_EXCEEDED | 429 | 请求频率超限（30次/分钟/IP） |
+    | INTERNAL_ERROR | 500 | 服务器内部错误 |
+
+  version: 1.0.0
+  contact:
+    name: Calliope Team
+
+servers:
+  - url: https://api.calliope-music.com/api/v1
+    description: 生产环境
+  - url: http://localhost:8080/api/v1
+    description: 本地开发
+
+tags:
+  - name: auth
+    description: 用户认证与授权
+  - name: tasks
+    description: 音乐生成任务管理
+  - name: works
+    description: 作品管理（保存、播放、下载）
+  - name: credits
+    description: 每日额度查询
+  - name: websocket
+    description: WebSocket 实时通知
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 组件定义
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "格式：Authorization: Bearer <access_token>"
+    InternalSecret:
+      type: http
+      scheme: bearer
+      description: "内部服务共享密钥，通过环境变量 INTERNAL_CALLBACK_SECRET 配置，仅 Python Worker 调用内部接口时使用"
+
+  responses:
+    Unauthorized:
+      description: 未认证或 Token 无效/过期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: "Token 无效或已过期，请重新登录"
+    Forbidden:
+      description: 无权限访问该资源
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: FORBIDDEN
+            message: "无权限访问该资源"
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: NOT_FOUND
+            message: "资源不存在"
+    RateLimitExceeded:
+      description: 请求频率超限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: RATE_LIMIT_EXCEEDED
+            message: "请求过于频繁，请稍后再试"
+
+  schemas:
+
+    # ── 通用 ─────────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: INVALID_CREDENTIALS
+        message:
+          type: string
+          example: "邮箱或密码不正确"
+
+    # ── 认证 ─────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password, password_confirm]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 32
+          example: "P@ssw0rd123"
+        password_confirm:
+          type: string
+          example: "P@ssw0rd123"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          example: "P@ssw0rd123"
+        remember_me:
+          type: boolean
+          default: false
+          description: "true 时 Refresh Token 有效期延长至 30 天"
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: "JWT，有效期 15 分钟"
+        refresh_token:
+          type: string
+          description: "UUID，有效期 7 天（remember_me=true 时 30 天）"
+        token_type:
+          type: string
+          enum: [Bearer]
+          example: Bearer
+        expires_in:
+          type: integer
+          description: "Access Token 剩余有效秒数"
+          example: 900
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 123
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        nickname:
+          type: string
+          example: "音乐创作者"
+        created_at:
+          type: string
+          format: date-time
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    # ── 任务 ─────────────────────────────────────────────────────────────────
+    CreateTaskRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "一首欢快的流行歌曲，节奏明快，适合夏天"
+        lyrics:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: "不填或传 null 则 AI 自动生成歌词"
+          example: "蔚蓝的天空，飘着白云..."
+        mode:
+          type: string
+          enum: [vocal, instrumental]
+          default: vocal
+          description: "vocal=含人声，instrumental=纯器乐"
+
+    CreateTaskResponse:
+      type: object
+      properties:
+        task_id:
+          type: integer
+          format: int64
+          example: 12345
+        status:
+          type: string
+          enum: [queued]
+        queue_position:
+          type: integer
+          description: "前方等待任务数（0 表示立即处理）"
+          example: 2
+        message:
+          type: string
+          example: "任务已提交，前方还有 2 个任务"
+
+    TaskDetail:
+      type: object
+      properties:
+        task_id:
+          type: integer
+          format: int64
+          example: 12345
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        queue_position:
+          type: integer
+          nullable: true
+          description: "仅 status=queued 时有值"
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: "仅 status=processing 时有值（伪进度）"
+        candidates:
+          type: array
+          nullable: true
+          description: "仅 status=completed 时有值"
+          items:
+            $ref: '#/components/schemas/AudioCandidate'
+        fail_reason:
+          type: string
+          nullable: true
+          description: "仅 status=failed 时有值"
+        prompt:
+          type: string
+        mode:
+          type: string
+          enum: [vocal, instrumental]
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AudioCandidate:
+      type: object
+      properties:
+        index:
+          type: string
+          enum: [a, b]
+        url:
+          type: string
+          format: uri
+          description: "七牛云签名临时下载 URL，有效期 1 小时"
+          example: "https://cdn.calliope-music.com/audio/67/12345/candidate_a.mp3?e=1741510000&token=xxx"
+        duration_seconds:
+          type: integer
+          example: 30
+
+    # ── 作品 ─────────────────────────────────────────────────────────────────
+    SelectCandidateRequest:
+      type: object
+      required: [task_id, candidate]
+      properties:
+        task_id:
+          type: integer
+          format: int64
+          example: 12345
+        candidate:
+          type: string
+          enum: [a, b]
+          description: "选择候选 a 或 b"
+        title:
+          type: string
+          maxLength: 50
+          nullable: true
+          description: "作品名称，不填则自动取 prompt 前 20 个字符"
+          example: "夏日流行曲"
+
+    Work:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 88
+        title:
+          type: string
+          example: "夏日流行曲"
+        prompt:
+          type: string
+          example: "一首欢快的流行歌曲"
+        mode:
+          type: string
+          enum: [vocal, instrumental]
+        audio_url:
+          type: string
+          format: uri
+          description: "七牛云签名临时 URL，有效期 1 小时"
+          example: "https://cdn.calliope-music.com/works/67/88.mp3?e=1741510000&token=xxx"
+        audio_url_expires_at:
+          type: string
+          format: date-time
+          description: "audio_url 过期时间（UTC），SDK 层播放前检查，过期则重新调用 getWork 获取新 URL"
+          example: "2026-03-10T11:00:00Z"
+        duration_seconds:
+          type: integer
+          example: 30
+        play_count:
+          type: integer
+          example: 5
+        created_at:
+          type: string
+          format: date-time
+
+    WorkListResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+          example: 42
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Work'
+
+    UpdateWorkRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 50
+          example: "新名字"
+
+    # ── 额度 ─────────────────────────────────────────────────────────────────
+    CreditInfo:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          example: "2026-03-09"
+        used:
+          type: integer
+          example: 2
+        limit:
+          type: integer
+          example: 5
+        remaining:
+          type: integer
+          description: "limit - used"
+          example: 3
+        resets_at:
+          type: string
+          format: date-time
+          description: "下次重置时间（UTC+8 次日零点，ISO 8601 格式）"
+          example: "2026-03-10T00:00:00+08:00"
+
+    # ── WebSocket 消息 ────────────────────────────────────────────────────────
+    WebSocketMessage:
+      type: object
+      description: "WebSocket 服务端推送的消息格式"
+      properties:
+        task_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        queue_position:
+          type: integer
+          nullable: true
+        progress:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+        fail_reason:
+          type: string
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 接口定义
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── 认证 ─────────────────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 用户注册（US-01）
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功，自动登录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: 参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                password_mismatch:
+                  value: {code: PASSWORD_MISMATCH, message: "两次密码输入不一致"}
+                invalid_email:
+                  value: {code: VALIDATION_ERROR, message: "邮箱格式不正确"}
+                password_too_short:
+                  value: {code: VALIDATION_ERROR, message: "密码长度不能少于 8 个字符"}
+        '409':
+          description: 邮箱已注册
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: EMAIL_ALREADY_EXISTS
+                message: "该邮箱已注册"
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: 用户登录（US-02）
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: 邮箱或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVALID_CREDENTIALS
+                message: "邮箱或密码不正确"
+        '403':
+          description: 账号已锁定（失败次数过多）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: ACCOUNT_LOCKED
+                message: "登录失败次数过多，账号已锁定 15 分钟"
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 刷新 Access Token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: 刷新成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    enum: [Bearer]
+                  expires_in:
+                    type: integer
+                    example: 900
+        '401':
+          description: Refresh Token 无效或已过期
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INVALID_REFRESH_TOKEN
+                message: "Refresh Token 无效或已过期，请重新登录"
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 登出（撤销 Refresh Token）
+      operationId: logout
+      description: |
+        使用 JWT 中的 user_id 执行 `DEL calliope:auth:refresh:{user_id}`，撤销当前用户的 Refresh Token。
+        MVP 单设备模型下无需在 body 中传 refresh_token，直接由 JWT 鉴权层提取 user_id。
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: 登出成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── 任务 ─────────────────────────────────────────────────────────────────────
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: 创建音乐生成任务（US-03）
+      operationId: createTask
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        '202':
+          description: 任务已接受，进入队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTaskResponse'
+        '400':
+          description: 参数错误或内容被过滤
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                content_filtered:
+                  value: {code: CONTENT_FILTERED, message: "输入内容包含违禁词汇，请修改后重试"}
+                validation_error:
+                  value: {code: VALIDATION_ERROR, message: "prompt 不能超过 200 个字符"}
+        '402':
+          description: 今日额度已用完
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: INSUFFICIENT_CREDITS
+                message: "今日额度已用完，明天再来"
+        '429':
+          description: 队列已满（超过 20 个任务）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: QUEUE_FULL
+                message: "当前生成队列已满，请稍后再试"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /tasks/{task_id}:
+    get:
+      tags: [tasks]
+      summary: 查询任务状态（US-04，轮询降级用）
+      operationId: getTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 12345
+      responses:
+        '200':
+          description: 任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── 作品 ─────────────────────────────────────────────────────────────────────
+  /works:
+    post:
+      tags: [works]
+      summary: 选择候选并保存为作品（US-05）
+      operationId: selectCandidate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectCandidateRequest'
+      responses:
+        '201':
+          description: 作品保存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Work'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                task_not_completed:
+                  value: {code: TASK_NOT_COMPLETED, message: "任务尚未完成，无法保存"}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: 该任务已保存过作品（资源冲突，DB 层 UNIQUE(task_id) 兜底）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                already_saved:
+                  value: {code: WORK_ALREADY_SAVED, message: "该任务已保存过作品"}
+
+    get:
+      tags: [works]
+      summary: 查询我的作品列表（US-06）
+      operationId: listWorks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: 作品列表（按创建时间倒序）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /works/{work_id}:
+    get:
+      tags: [works]
+      summary: 获取单个作品详情及播放 URL（US-07）
+      operationId: getWork
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: work_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 作品详情（含签名音频 URL，有效期 1 小时）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Work'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [works]
+      summary: 更新作品信息（改名）
+      operationId: updateWork
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: work_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Work'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [works]
+      summary: 删除作品（软删除）
+      operationId: deleteWork
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: work_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: 删除成功
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /works/{work_id}/download:
+    get:
+      tags: [works]
+      summary: 获取作品下载 URL（US-08）
+      operationId: downloadWork
+      description: |
+        返回七牛云签名下载 URL（有效期 1 小时）。
+        客户端使用此 URL 直接从七牛云 CDN 下载，文件名为 `{title}.mp3`。
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: work_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 下载链接
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url:
+                    type: string
+                    format: uri
+                    description: "七牛云签名 URL，有效期 1 小时，含 attname 参数使浏览器触发下载"
+                    example: "https://cdn.calliope-music.com/works/67/88.mp3?e=1741510000&token=xxx&attname=%E5%A4%8F%E6%97%A5%E6%B5%81%E8%A1%8C%E6%9B%B2.mp3"
+                  filename:
+                    type: string
+                    example: "夏日流行曲.mp3"
+                  expires_in:
+                    type: integer
+                    description: "下载链接有效秒数"
+                    example: 3600
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── 额度 ─────────────────────────────────────────────────────────────────────
+  /credits:
+    get:
+      tags: [credits]
+      summary: 查询今日剩余额度（US-09）
+      operationId: getCredits
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 今日额度信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditInfo'
+              example:
+                date: "2026-03-09"
+                used: 2
+                limit: 5
+                remaining: 3
+                resets_at: "2026-03-10T00:00:00+08:00"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ── WebSocket ─────────────────────────────────────────────────────────────────
+  /ws:
+    servers:
+      - url: wss://api.calliope-music.com
+        description: WebSocket 不含 /api/v1 版本前缀
+    get:
+      tags: [websocket]
+      summary: WebSocket 连接（US-04）
+      operationId: websocket
+      description: |
+        通过 WebSocket 接收任务实时进度推送。
+
+        **连接方式：**
+        ```
+        WSS wss://api.calliope-music.com/ws?token={access_token}&task_id={task_id}
+        ```
+
+        **服务端推送消息格式：**
+        ```json
+        {
+          "task_id": 12345,
+          "status": "processing",
+          "progress": 60,
+          "queue_position": null,
+          "fail_reason": null,
+          "completed_at": null
+        }
+        ```
+
+        **降级策略：**
+        WebSocket 连接失败时，客户端应降级为轮询 `GET /tasks/{task_id}`，间隔 3 秒。
+
+        **超时处理：**
+        任务超时（3 分钟）时，服务端推送 `status=failed, fail_reason=timeout` 并关闭连接。
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Access Token（WebSocket 无法设置 Header，通过 query 参数传递）"
+        - name: task_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: "订阅该任务的进度推送"
+      responses:
+        '101':
+          description: WebSocket 握手成功，切换协议
+        '401':
+          description: Token 无效
+        '404':
+          description: 任务不存在
+
+  # ── 内部接口（Python Worker → Go API，不对外暴露）────────────────────────────
+  /internal/tasks/{task_id}/status:
+    servers:
+      - url: https://api.calliope-music.com
+        description: 内部路径不含 /api/v1 版本前缀
+    post:
+      tags: [tasks]
+      summary: 推理服务状态回调（仅限内部调用）
+      operationId: updateTaskStatusInternal
+      description: |
+        **此接口仅供 Python 推理服务回调使用，不对外暴露。**
+
+        鉴权方式：`Authorization: Bearer {INTERNAL_CALLBACK_SECRET}`
+        （Go API 和 Python Worker 通过环境变量共享同一个静态密钥）
+
+        调用时机：
+        - 任务开始处理时（status=processing）
+        - 推理完成并上传到 OSS 后（status=completed）
+        - 推理失败时（status=failed）
+
+        Go API 收到回调后负责：
+        1. UPDATE tasks 表状态及相关字段
+        2. PUBLISH Redis Pub/Sub channel 通知 WebSocket 客户端
+      security:
+        - InternalSecret: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: X-Timestamp
+          in: header
+          required: true
+          schema:
+            type: integer
+          description: "Unix 时间戳（秒）。Go API 拒绝与服务器时间差超过 60 秒的请求（防重放）"
+          example: 1741510000
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [processing, completed, failed]
+                candidate_a_key:
+                  type: string
+                  description: "七牛云文件路径 key，status=completed 时必填"
+                  example: "audio/67/12345/candidate_a.mp3"
+                candidate_b_key:
+                  type: string
+                  description: "七牛云文件路径 key，status=completed 时必填"
+                  example: "audio/67/12345/candidate_b.mp3"
+                duration_seconds:
+                  type: integer
+                  description: "音频时长，status=completed 时必填"
+                inference_ms:
+                  type: integer
+                  description: "推理耗时毫秒，status=completed 时填写"
+                fail_reason:
+                  type: string
+                  description: "失败原因，status=failed 时必填"
+                  enum: [timeout, inference_error, upload_error]
+      responses:
+        '204':
+          description: 回调处理成功
+        '401':
+          description: 密钥无效
+        '404':
+          description: 任务不存在
+        '409':
+          description: |
+            重复回调或状态前置条件不满足。Worker 收到 409 时须读取 reason 字段决定处理方式：
+            - reason=duplicate：相同状态已写入，视为成功，不重试
+            - reason=invalid_transition：状态机非法跳转（如 completed 后收到 processing），记录 WARN，不重试
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, reason, current_status]
+                properties:
+                  code:
+                    type: string
+                    enum: [CALLBACK_CONFLICT]
+                  reason:
+                    type: string
+                    enum: [duplicate, invalid_transition]
+                    description: duplicate=重复回调；invalid_transition=状态机非法跳转
+                  current_status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+                    description: 当前任务实际状态
+              examples:
+                duplicate:
+                  summary: 重复回调（视为成功）
+                  value:
+                    code: CALLBACK_CONFLICT
+                    reason: duplicate
+                    current_status: processing
+                invalid_transition:
+                  summary: 状态机非法跳转
+                  value:
+                    code: CALLBACK_CONFLICT
+                    reason: invalid_transition
+                    current_status: completed
+
