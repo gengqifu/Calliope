@@ -105,6 +105,9 @@
 - [x] `docs/architecture/database-schema.md`
 - [x] `docs/architecture/internal-protocol.md`（内部通信协议）
 - [x] `docs/architecture/client-sdk-spec.md`（客户端 SDK 规范）
+- [x] `docs/architecture/client-android.md`（Android 客户端架构）
+- [x] `docs/architecture/client-ios.md`（iOS 客户端架构）
+- [x] `docs/architecture/client-h5.md`（H5 客户端架构）
 - [x] `docs/adr/` 目录（各技术决策记录）
 
 ### 完成标准
@@ -151,6 +154,7 @@ AI 推理层（Python）
 
 - **OpenAPI 路径级 servers 兼容性**：`/ws` 和 `/internal/*` 使用了路径级 `servers` 覆盖全局 `/api/v1` 前缀。若引入代码生成工具（如 openapi-generator），需验证所用模板是否正确支持此特性；Python Worker 和客户端若手写，以描述中的硬编码 URL 为准。
 - **WebSocket 契约测试**：`api-spec.yaml` 中的 `/ws` 是文档化用途，OpenAPI 3.0 不原生支持 WebSocket，代码生成器会产出普通 HTTP GET。WebSocket 实现以 `client-sdk-spec.md §4.3` 和 `database-schema.md §2.5` 为准。如需机器可执行的契约，评估引入 AsyncAPI 规范。
+- **客户端实现前**：各平台实现前以对应架构文档为准（`client-android.md` / `client-ios.md` / `client-h5.md`），目录结构、依赖版本和关键机制以文档为准，不需要重新决策。
 
 ### 每个模块的实现流程
 
