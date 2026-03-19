@@ -73,9 +73,29 @@ docker compose logs -f [service]          # 查看服务日志
 - **Plan Mode**：每次实现新模块或执行部署操作前，使用 `/plan` 规划后再执行
 - **ADR 记录**：重要架构决策记录在 `docs/adr/` 目录
 
+## 代码目录结构
+
+```
+Calliope/
+├── api/            # Go API 服务（含 api/CLAUDE.md）
+├── inference/      # Python 推理服务（含 inference/CLAUDE.md）
+├── android/        # Android App（含 android/CLAUDE.md）
+├── ios/            # iOS App（含 ios/CLAUDE.md）
+├── h5/             # H5 Web App（含 h5/CLAUDE.md）
+├── docker/         # docker-compose 和 Dockerfile
+└── docs/           # 所有设计文档和规范
+```
+
+**各子目录均有独立 CLAUDE.md**，包含该端的强制编码约束。进入对应目录工作时，Claude 会自动叠加读取。
+
 ## 关键文档
 
 - [docs/project-plan.md](docs/project-plan.md) — 项目主计划，包含阶段任务和当前状态
 - [docs/claude-best-practices.md](docs/claude-best-practices.md) — Claude 使用最佳实践
 - [docs/architecture/](docs/architecture/) — 架构设计文档（阶段2产出）
 - [docs/adr/](docs/adr/) — 架构决策记录
+- [docs/coding-standards/go.md](docs/coding-standards/go.md) — Go 详细编码规范
+- [docs/coding-standards/python.md](docs/coding-standards/python.md) — Python 详细编码规范
+- [docs/coding-standards/android.md](docs/coding-standards/android.md) — Android 详细编码规范
+- [docs/coding-standards/ios.md](docs/coding-standards/ios.md) — iOS 详细编码规范
+- [docs/coding-standards/h5.md](docs/coding-standards/h5.md) — H5 详细编码规范
