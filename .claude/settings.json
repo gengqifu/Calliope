@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/Users/gengqifu/go/pkg/mod/github.com/qiniu/go-sdk/v7@v7.26.5/**)"
+    ]
+  }
+}
