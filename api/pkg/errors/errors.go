@@ -29,4 +29,11 @@ var (
 	ErrUnauthorized = New("UNAUTHORIZED", "未授权，请先登录")
 	ErrForbidden    = New("FORBIDDEN", "无权限执行此操作")
 	ErrInternal     = New("INTERNAL_ERROR", "服务器内部错误")
+
+	// Auth-specific errors
+	ErrPasswordMismatch      = New("PASSWORD_MISMATCH", "两次输入的密码不一致")
+	ErrEmailAlreadyExists    = New("EMAIL_ALREADY_EXISTS", "该邮箱已注册")
+	ErrInvalidCredentials    = New("INVALID_CREDENTIALS", "邮箱或密码不正确")
+	ErrAccountLocked         = New("ACCOUNT_LOCKED", "登录失败次数过多，账号已锁定 15 分钟")
+	ErrInvalidRefreshToken   = New("INVALID_REFRESH_TOKEN", "Refresh Token 无效或已过期")
 )

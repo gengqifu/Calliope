@@ -12,6 +12,16 @@ type Config struct {
 	Redis RedisConfig
 	OSS   OSSConfig
 	App   AppConfig
+	Auth  AuthConfig
+}
+
+type AuthConfig struct {
+	JWTSecret        string
+	AccessTokenTTL   time.Duration
+	RefreshTokenTTL  time.Duration
+	RefreshTokenLong time.Duration
+	MaxLoginAttempts int
+	LockDuration     time.Duration
 }
 
 type OSSConfig struct {
@@ -55,6 +65,11 @@ func Load() (*Config, error) {
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("APP_LOG_LEVEL", "info")
 	v.SetDefault("QINIU_REGION", "z2")
+	v.SetDefault("AUTH_ACCESS_TOKEN_TTL", "15m")
+	v.SetDefault("AUTH_REFRESH_TOKEN_TTL", "168h")  // 7 days
+	v.SetDefault("AUTH_REFRESH_TOKEN_LONG", "720h") // 30 days
+	v.SetDefault("AUTH_MAX_LOGIN_ATTEMPTS", 5)
+	v.SetDefault("AUTH_LOCK_DURATION", "15m")
 
 	v.SetConfigFile(".env")
 	v.SetConfigType("env")
@@ -68,10 +83,30 @@ func Load() (*Config, error) {
 	if v.GetString("DB_DSN") == "" {
 		return nil, fmt.Errorf("config.Load: DB_DSN is required")
 	}
+	if v.GetString("JWT_SECRET") == "" {
+		return nil, fmt.Errorf("config.Load: JWT_SECRET is required")
+	}
 
 	connMaxLifetime, err := time.ParseDuration(v.GetString("DB_CONN_MAX_LIFETIME"))
 	if err != nil {
 		return nil, fmt.Errorf("config.Load: invalid DB_CONN_MAX_LIFETIME: %w", err)
+	}
+
+	accessTTL, err := time.ParseDuration(v.GetString("AUTH_ACCESS_TOKEN_TTL"))
+	if err != nil {
+		return nil, fmt.Errorf("config.Load: invalid AUTH_ACCESS_TOKEN_TTL: %w", err)
+	}
+	refreshTTL, err := time.ParseDuration(v.GetString("AUTH_REFRESH_TOKEN_TTL"))
+	if err != nil {
+		return nil, fmt.Errorf("config.Load: invalid AUTH_REFRESH_TOKEN_TTL: %w", err)
+	}
+	refreshLong, err := time.ParseDuration(v.GetString("AUTH_REFRESH_TOKEN_LONG"))
+	if err != nil {
+		return nil, fmt.Errorf("config.Load: invalid AUTH_REFRESH_TOKEN_LONG: %w", err)
+	}
+	lockDuration, err := time.ParseDuration(v.GetString("AUTH_LOCK_DURATION"))
+	if err != nil {
+		return nil, fmt.Errorf("config.Load: invalid AUTH_LOCK_DURATION: %w", err)
 	}
 
 	return &Config{
@@ -96,6 +131,14 @@ func Load() (*Config, error) {
 		App: AppConfig{
 			Env:      v.GetString("APP_ENV"),
 			LogLevel: v.GetString("APP_LOG_LEVEL"),
+		},
+		Auth: AuthConfig{
+			JWTSecret:        v.GetString("JWT_SECRET"),
+			AccessTokenTTL:   accessTTL,
+			RefreshTokenTTL:  refreshTTL,
+			RefreshTokenLong: refreshLong,
+			MaxLoginAttempts: v.GetInt("AUTH_MAX_LOGIN_ATTEMPTS"),
+			LockDuration:     lockDuration,
 		},
 	}, nil
 }
