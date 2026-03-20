@@ -4,6 +4,7 @@ go 1.25.7
 
 require (
 	github.com/golang-migrate/migrate/v4 v4.17.1
+	github.com/redis/go-redis/v9 v9.18.0
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
 	gorm.io/driver/mysql v1.5.7
@@ -11,7 +12,9 @@ require (
 )
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/go-sql-driver/mysql v1.7.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -30,7 +33,7 @@ require (
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	go.uber.org/atomic v1.9.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect
 	golang.org/x/sys v0.17.0 // indirect
