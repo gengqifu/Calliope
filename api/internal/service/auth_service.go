@@ -27,14 +27,20 @@ type AuthConfig struct {
 	LockDuration     time.Duration
 }
 
-// RedisClient is the subset of Redis operations required by AuthService.
+// RedisClient is the subset of Redis operations required by services.
 type RedisClient interface {
 	Set(ctx context.Context, key string, value interface{}, ttl time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
 	Del(ctx context.Context, keys ...string) error
 	Incr(ctx context.Context, key string) (int64, error)
+	Decr(ctx context.Context, key string) (int64, error)
 	Expire(ctx context.Context, key string, ttl time.Duration) error
 	Exists(ctx context.Context, key string) (bool, error)
+	// Eval executes a Lua script atomically.
+	// keys and args correspond to KEYS and ARGV in the script.
+	Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error)
+	// Publish sends a message to a Pub/Sub channel.
+	Publish(ctx context.Context, channel string, message interface{}) error
 }
 
 // AuthService defines the authentication business logic.

@@ -13,6 +13,16 @@ type Config struct {
 	OSS   OSSConfig
 	App   AppConfig
 	Auth  AuthConfig
+	Task  TaskConfig
+}
+
+type TaskConfig struct {
+	InternalCallbackSecret  string
+	QueueDepthMax           int
+	TaskTimeoutSec          int
+	SignedURLTTL            time.Duration
+	ExpectedInferenceSec    int           // 伪进度计算用，推理预期耗时
+	TimeoutScanInterval     time.Duration // 超时扫描定时任务间隔
 }
 
 type AuthConfig struct {
@@ -70,6 +80,11 @@ func Load() (*Config, error) {
 	v.SetDefault("AUTH_REFRESH_TOKEN_LONG", "720h") // 30 days
 	v.SetDefault("AUTH_MAX_LOGIN_ATTEMPTS", 5)
 	v.SetDefault("AUTH_LOCK_DURATION", "15m")
+	v.SetDefault("TASK_QUEUE_DEPTH_MAX", 20)
+	v.SetDefault("TASK_TIMEOUT_SEC", 180)
+	v.SetDefault("TASK_SIGNED_URL_TTL", "1h")
+	v.SetDefault("TASK_EXPECTED_INFERENCE_SEC", 120)
+	v.SetDefault("TASK_TIMEOUT_SCAN_INTERVAL", "30s")
 
 	v.SetConfigFile(".env")
 	v.SetConfigType("env")
@@ -85,6 +100,9 @@ func Load() (*Config, error) {
 	}
 	if v.GetString("JWT_SECRET") == "" {
 		return nil, fmt.Errorf("config.Load: JWT_SECRET is required")
+	}
+	if v.GetString("INTERNAL_CALLBACK_SECRET") == "" {
+		return nil, fmt.Errorf("config.Load: INTERNAL_CALLBACK_SECRET is required")
 	}
 
 	connMaxLifetime, err := time.ParseDuration(v.GetString("DB_CONN_MAX_LIFETIME"))
@@ -107,6 +125,15 @@ func Load() (*Config, error) {
 	lockDuration, err := time.ParseDuration(v.GetString("AUTH_LOCK_DURATION"))
 	if err != nil {
 		return nil, fmt.Errorf("config.Load: invalid AUTH_LOCK_DURATION: %w", err)
+	}
+
+	signedURLTTL, err := time.ParseDuration(v.GetString("TASK_SIGNED_URL_TTL"))
+	if err != nil {
+		return nil, fmt.Errorf("config.Load: invalid TASK_SIGNED_URL_TTL: %w", err)
+	}
+	timeoutScanInterval, err := time.ParseDuration(v.GetString("TASK_TIMEOUT_SCAN_INTERVAL"))
+	if err != nil {
+		return nil, fmt.Errorf("config.Load: invalid TASK_TIMEOUT_SCAN_INTERVAL: %w", err)
 	}
 
 	return &Config{
@@ -139,6 +166,14 @@ func Load() (*Config, error) {
 			RefreshTokenLong: refreshLong,
 			MaxLoginAttempts: v.GetInt("AUTH_MAX_LOGIN_ATTEMPTS"),
 			LockDuration:     lockDuration,
+		},
+		Task: TaskConfig{
+			InternalCallbackSecret: v.GetString("INTERNAL_CALLBACK_SECRET"),
+			QueueDepthMax:          v.GetInt("TASK_QUEUE_DEPTH_MAX"),
+			TaskTimeoutSec:         v.GetInt("TASK_TIMEOUT_SEC"),
+			SignedURLTTL:           signedURLTTL,
+			ExpectedInferenceSec:   v.GetInt("TASK_EXPECTED_INFERENCE_SEC"),
+			TimeoutScanInterval:    timeoutScanInterval,
 		},
 	}, nil
 }

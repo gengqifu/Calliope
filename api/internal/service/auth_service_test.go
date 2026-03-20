@@ -80,6 +80,20 @@ func (m *mockRedis) Exists(ctx context.Context, key string) (bool, error) {
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockRedis) Decr(ctx context.Context, key string) (int64, error) {
+	args := m.Called(ctx, key)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *mockRedis) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+	callArgs := m.Called(ctx, script, keys, args)
+	return callArgs.Get(0), callArgs.Error(1)
+}
+
+func (m *mockRedis) Publish(ctx context.Context, channel string, message interface{}) error {
+	return m.Called(ctx, channel, message).Error(0)
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

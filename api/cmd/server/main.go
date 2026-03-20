@@ -1,7 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -10,6 +16,7 @@ import (
 	"github.com/calliope/api/internal/infra"
 	"github.com/calliope/api/internal/middleware"
 	"github.com/calliope/api/internal/repository"
+	"github.com/calliope/api/internal/scheduler"
 	"github.com/calliope/api/internal/service"
 )
 
@@ -48,6 +55,27 @@ func main() {
 	}, userRepo, rdb)
 	authHandler := handler.NewAuthHandler(authSvc)
 
+	ossClient, err := infra.NewOSSClient(cfg.OSS)
+	if err != nil {
+		log.Fatalf("failed to init OSS client: %v", err)
+	}
+
+	taskRepo := repository.NewTaskRepository(db)
+	creditRepo := repository.NewCreditRepository(db)
+	taskSvc := service.NewTaskService(service.TaskServiceConfig{
+		QueueDepthMax:        cfg.Task.QueueDepthMax,
+		TaskTimeoutSec:       cfg.Task.TaskTimeoutSec,
+		SignedURLTTL:         cfg.Task.SignedURLTTL,
+		ExpectedInferenceSec: cfg.Task.ExpectedInferenceSec,
+	}, taskRepo, creditRepo, rdb, ossClient)
+	taskHandler := handler.NewTaskHandler(taskSvc)
+	internalHandler := handler.NewInternalHandler(taskSvc)
+
+	// Background scheduler: fix timed-out tasks
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	scheduler.StartTaskTimeoutScheduler(ctx, taskSvc, cfg.Task.TimeoutScanInterval)
+
 	// Router
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
@@ -60,10 +88,46 @@ func main() {
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.Refresh)
 		auth.POST("/logout", middleware.Auth(cfg.Auth.JWTSecret), authHandler.Logout)
+
+		tasks := v1.Group("/tasks", middleware.Auth(cfg.Auth.JWTSecret))
+		tasks.POST("", taskHandler.Create)
+		tasks.GET("/:task_id", taskHandler.Get)
 	}
 
-	log.Printf("Calliope API server starting on :8080 (env=%s)...", cfg.App.Env)
-	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("server error: %v", err)
+	// Internal routes (Python Worker → Go API), no JWT, shared secret auth
+	internal := r.Group("/internal", handler.InternalAuth(cfg.Task.InternalCallbackSecret))
+	internal.POST("/tasks/:task_id/status", internalHandler.UpdateStatus)
+
+	srv := &http.Server{
+		Addr:         ":8080",
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
+
+	// Start server in background
+	go func() {
+		log.Printf("Calliope API server starting on :8080 (env=%s)...", cfg.App.Env)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	// Wait for SIGINT / SIGTERM
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Stop scheduler first (no new timeout scans)
+	cancel()
+
+	// Give in-flight HTTP requests up to 10 seconds to finish
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("server forced to shutdown: %v", err)
+	}
+	log.Println("Server exited")
 }

@@ -36,4 +36,11 @@ var (
 	ErrInvalidCredentials    = New("INVALID_CREDENTIALS", "邮箱或密码不正确")
 	ErrAccountLocked         = New("ACCOUNT_LOCKED", "登录失败次数过多，账号已锁定 15 分钟")
 	ErrInvalidRefreshToken   = New("INVALID_REFRESH_TOKEN", "Refresh Token 无效或已过期")
+
+	// Task-specific errors
+	ErrInsufficientCredits = New("INSUFFICIENT_CREDITS", "今日额度已用完，明天再来")
+	ErrQueueFull           = New("QUEUE_FULL", "当前生成队列已满，请稍后再试")
+	ErrContentFiltered     = New("CONTENT_FILTERED", "输入内容包含违禁词汇，请修改后重试")
+	ErrTaskNotCompleted    = New("TASK_NOT_COMPLETED", "任务尚未完成，无法保存")
+	ErrInvalidTransition   = New("INVALID_STATUS_TRANSITION", "当前任务状态不允许此操作")
 )

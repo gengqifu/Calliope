@@ -20,6 +20,12 @@ var errorCodeToStatus = map[string]int{
 	"INVALID_CREDENTIALS":    http.StatusUnauthorized,
 	"ACCOUNT_LOCKED":         http.StatusForbidden,
 	"INVALID_REFRESH_TOKEN":  http.StatusUnauthorized,
+	// Task-specific
+	"INSUFFICIENT_CREDITS":   http.StatusPaymentRequired,
+	"QUEUE_FULL":             http.StatusTooManyRequests,
+	"CONTENT_FILTERED":       http.StatusBadRequest,
+	"TASK_NOT_COMPLETED":        http.StatusBadRequest,
+	"INVALID_STATUS_TRANSITION": http.StatusConflict,
 }
 
 // Error returns a Gin middleware that converts errors attached via c.Error()

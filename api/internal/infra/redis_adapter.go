@@ -41,3 +41,15 @@ func (a *RedisAdapter) Exists(ctx context.Context, key string) (bool, error) {
 	n, err := a.client.Exists(ctx, key).Result()
 	return n > 0, err
 }
+
+func (a *RedisAdapter) Decr(ctx context.Context, key string) (int64, error) {
+	return a.client.Decr(ctx, key).Result()
+}
+
+func (a *RedisAdapter) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+	return a.client.Eval(ctx, script, keys, args...).Result()
+}
+
+func (a *RedisAdapter) Publish(ctx context.Context, channel string, message interface{}) error {
+	return a.client.Publish(ctx, channel, message).Err()
+}
