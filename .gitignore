@@ -31,5 +31,5 @@ go.work.sum
 # .idea/
 # .vscode/
 
-# Claude Code 本地设置（可能含敏感权限配置，不提交）
-.claude/settings.local.json
+# Claude Code 设置（可能含敏感权限配置，不提交）
+.claude/
