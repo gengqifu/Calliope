@@ -10,7 +10,16 @@ import (
 type Config struct {
 	DB    DBConfig
 	Redis RedisConfig
+	OSS   OSSConfig
 	App   AppConfig
+}
+
+type OSSConfig struct {
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	Domain    string // 下载域名，用于生成签名 URL
+	Region    string // 存储区域，如 z0/z1/z2
 }
 
 type DBConfig struct {
@@ -45,6 +54,7 @@ func Load() (*Config, error) {
 	v.SetDefault("REDIS_DB", 0)
 	v.SetDefault("APP_ENV", "development")
 	v.SetDefault("APP_LOG_LEVEL", "info")
+	v.SetDefault("QINIU_REGION", "z2")
 
 	v.SetConfigFile(".env")
 	v.SetConfigType("env")
@@ -75,6 +85,13 @@ func Load() (*Config, error) {
 			Addr:     v.GetString("REDIS_ADDR"),
 			Password: v.GetString("REDIS_PASSWORD"),
 			DB:       v.GetInt("REDIS_DB"),
+		},
+		OSS: OSSConfig{
+			AccessKey: v.GetString("QINIU_ACCESS_KEY"),
+			SecretKey: v.GetString("QINIU_SECRET_KEY"),
+			Bucket:    v.GetString("QINIU_BUCKET"),
+			Domain:    v.GetString("QINIU_DOMAIN"),
+			Region:    v.GetString("QINIU_REGION"),
 		},
 		App: AppConfig{
 			Env:      v.GetString("APP_ENV"),
