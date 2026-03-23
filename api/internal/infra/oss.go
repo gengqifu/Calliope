@@ -96,6 +96,17 @@ func (c *OSSClient) SignURL(_ context.Context, key string, ttl time.Duration) (s
 	return url, nil
 }
 
+// Copy 将 srcKey 复制到 dstKey（同 Bucket），目标已存在时强制覆盖。
+func (c *OSSClient) Copy(_ context.Context, srcKey, dstKey string) error {
+	cfg := storage.Config{Zone: c.region, UseHTTPS: true}
+	mgr := storage.NewBucketManager(c.mac, &cfg)
+	err := mgr.Copy(c.cfg.Bucket, srcKey, c.cfg.Bucket, dstKey, true)
+	if err != nil {
+		return fmt.Errorf("infra.OSSClient.Copy: %w", err)
+	}
+	return nil
+}
+
 // zoneFromRegion 将区域字符串映射到七牛云 Zone。
 func zoneFromRegion(region string) (*storage.Zone, error) {
 	switch region {

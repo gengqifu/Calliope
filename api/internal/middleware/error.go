@@ -26,6 +26,8 @@ var errorCodeToStatus = map[string]int{
 	"CONTENT_FILTERED":       http.StatusBadRequest,
 	"TASK_NOT_COMPLETED":        http.StatusBadRequest,
 	"INVALID_STATUS_TRANSITION": http.StatusConflict,
+	// Work-specific
+	"WORK_ALREADY_SAVED": http.StatusConflict,
 }
 
 // Error returns a Gin middleware that converts errors attached via c.Error()

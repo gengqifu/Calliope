@@ -43,4 +43,7 @@ var (
 	ErrContentFiltered     = New("CONTENT_FILTERED", "输入内容包含违禁词汇，请修改后重试")
 	ErrTaskNotCompleted    = New("TASK_NOT_COMPLETED", "任务尚未完成，无法保存")
 	ErrInvalidTransition   = New("INVALID_STATUS_TRANSITION", "当前任务状态不允许此操作")
+
+	// Work-specific errors
+	ErrWorkAlreadySaved = New("WORK_ALREADY_SAVED", "该任务已保存过作品，删除后也不可重新保存")
 )

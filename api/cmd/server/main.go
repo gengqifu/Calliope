@@ -71,6 +71,12 @@ func main() {
 	taskHandler := handler.NewTaskHandler(taskSvc)
 	internalHandler := handler.NewInternalHandler(taskSvc)
 
+	workRepo := repository.NewWorkRepository(db)
+	workSvc := service.NewWorkService(service.WorkServiceConfig{
+		SignedURLTTL: cfg.Task.SignedURLTTL,
+	}, workRepo, taskRepo, ossClient)
+	workHandler := handler.NewWorkHandler(workSvc)
+
 	// Background scheduler: fix timed-out tasks
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -92,6 +98,13 @@ func main() {
 		tasks := v1.Group("/tasks", middleware.Auth(cfg.Auth.JWTSecret))
 		tasks.POST("", taskHandler.Create)
 		tasks.GET("/:task_id", taskHandler.Get)
+
+		works := v1.Group("/works", middleware.Auth(cfg.Auth.JWTSecret))
+		works.POST("", workHandler.Save)
+		works.GET("", workHandler.List)
+		works.GET("/:work_id", workHandler.Get)
+		works.GET("/:work_id/download", workHandler.GetDownloadURL)
+		works.DELETE("/:work_id", workHandler.Delete)
 	}
 
 	// Internal routes (Python Worker → Go API), no JWT, shared secret auth
