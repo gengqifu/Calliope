@@ -21,7 +21,9 @@ import (
 // Returns {streamID, newDepth} on success, or redis.error_reply("QUEUE_FULL")
 // if the post-INCR depth exceeds the limit. This closes the TOCTOU window
 // between the pre-check GET and the actual INCR.
-const xaddIncrScript = `
+// XaddIncrScript is exported so integration tests can reference the exact same
+// script rather than maintaining a copy that could silently drift.
+const XaddIncrScript = `
 local depth = redis.call('INCR', KEYS[2])
 if depth > tonumber(ARGV[6]) then
     redis.call('DECR', KEYS[2])
@@ -118,7 +120,7 @@ func (s *taskServiceImpl) CreateTask(ctx context.Context, userID uint64, req dto
 	}
 
 	// Step 4: atomically INCR depth + XADD via Lua (hard ceiling enforced in script)
-	result, err := s.rdb.Eval(ctx, xaddIncrScript,
+	result, err := s.rdb.Eval(ctx, XaddIncrScript,
 		[]string{redisStreamKey, redisDepthKey},
 		strconv.FormatUint(task.ID, 10),
 		strconv.FormatUint(userID, 10),
