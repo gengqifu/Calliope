@@ -33,3 +33,16 @@ go.work.sum
 
 # Claude Code 设置（可能含敏感权限配置，不提交）
 .claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/

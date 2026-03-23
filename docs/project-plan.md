@@ -136,7 +136,7 @@
 └── [x] 音频文件管理（上传/下载/删除）
 
 AI 推理层（Python）
-├── [ ] FastAPI 服务骨架
+├── [x] FastAPI 服务骨架
 ├── [ ] AudioCraft 集成
 ├── [ ] 任务消费 Worker
 └── [ ] 推理结果回写
@@ -288,8 +288,8 @@ AI 推理层（Python）
 ## 当前状态
 
 **当前阶段：** 阶段 3 - 编码实现（TDD）
-**最近更新：** 核心业务层第四个模块完成——音频文件管理（保存作品/列表/播放签名URL/下载URL/软删除；Copy-on-Save 策略，候选音频与永久作品分离存储）
-**下一步行动：** AI 推理层——Python FastAPI 服务骨架
+**最近更新：** AI 推理层第一个模块完成——Python FastAPI 服务骨架（配置管理、Redis Stream Worker、Go API 回调客户端、MockInferenceService、健康检查接口；单元测试全部通过）
+**下一步行动：** AI 推理层——AudioCraft 集成
 
 ---
 
