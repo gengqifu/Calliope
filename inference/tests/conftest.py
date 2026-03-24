@@ -1,11 +1,14 @@
 """pytest fixtures"""
 
+from unittest.mock import AsyncMock
+
 import pytest
 import fakeredis.aioredis as fakeredis
 from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.infra.callback_client import CallbackClient
+from app.infra.storage import StorageClient
 from app.main import create_app
 from app.models.schemas import TaskMessage
 from app.services.inference import MockInferenceService
@@ -44,6 +47,14 @@ def task_message() -> TaskMessage:
 @pytest.fixture
 def mock_inference() -> MockInferenceService:
     return MockInferenceService()
+
+
+@pytest.fixture
+def mock_storage() -> AsyncMock:
+    """可复用的 StorageClient mock（spec 绑定，upload_audio 返回 key）"""
+    storage = AsyncMock(spec=StorageClient)
+    storage.upload_audio.side_effect = lambda key, data, **kw: key
+    return storage
 
 
 @pytest.fixture

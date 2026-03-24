@@ -137,7 +137,7 @@
 
 AI 推理层（Python）
 ├── [x] FastAPI 服务骨架
-├── [ ] AudioCraft 集成
+├── [x] AudioCraft 集成
 ├── [ ] 任务消费 Worker
 └── [ ] 推理结果回写
 
@@ -288,8 +288,8 @@ AI 推理层（Python）
 ## 当前状态
 
 **当前阶段：** 阶段 3 - 编码实现（TDD）
-**最近更新：** AI 推理层第一个模块完成——Python FastAPI 服务骨架（配置管理、Redis Stream Worker、Go API 回调客户端、MockInferenceService、健康检查接口；单元测试全部通过）
-**下一步行动：** AI 推理层——AudioCraft 集成
+**最近更新：** AudioCraft 集成完成——MusicGenInferenceService（本地 GPU）、SiliconFlowInferenceService（API fallback）、真实 Qiniu OSS 上传、main.py 服务工厂函数；60 个单元测试通过（slow 测试默认排除，需 GPU 环境单独运行）；GPU 依赖拆分至 requirements-gpu.txt
+**下一步行动：** AI 推理层——任务消费 Worker（Worker 完整流程联调）
 
 ---
 
